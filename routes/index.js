@@ -5,14 +5,6 @@ var uniqid = require('uniqid');
 const util = require('util')
 var router = express.Router();
 
-/* GET home page. */
-router.get('/', function (req, res, next) {
-  console.log('hello world');
-  res.render('index', {
-    title: 'yo'
-  });
-});
-
 router.get('/clone/:repo/:branch', function (req, res) {
 
   const path = '/tmp'
