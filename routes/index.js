@@ -4,6 +4,9 @@ const dirTree = require("directory-tree");
 var uniqid = require('uniqid');
 const util = require('util')
 var router = express.Router();
+var pretty = require('express-prettify');
+
+router.use(pretty({ query: 'pretty' }));
 
 router.get('/clone/:repo/:branch', function (req, res) {
 
@@ -27,15 +30,17 @@ router.get('/clone/:repo/:branch', function (req, res) {
     });
 
     const workshops =
-      tree.children
-      .filter(element => (typeof element.children != "undefined"))
+      tree.children // children are the directories with workshops
+      //.filter(element => (typeof element.children != "undefined")) // exclude workshops without steps
       .map(element => ({
-        name: element.name,
-        steps: element.children
-          .filter(element => (typeof element.children != "undefined"))
+        name: element.name, // name of the workshop dir
+        type: element.type,
+        steps: ((typeof element.children != "undefined")? element.children: []) // steps subdirectories
+          //.filter(element => (typeof element.children != "undefined"))
           .map(stepchild => ({
             name: stepchild.name,
-            markdown: stepchild.children
+            type: stepchild.type,
+            markdown: ((typeof stepchild.children != "undefined")? stepchild.children: [])
               .filter(
                 file => (file.extension == '.md')
               )
@@ -44,7 +49,7 @@ router.get('/clone/:repo/:branch', function (req, res) {
                   name: file.name
                 })
               ),
-            sol: stepchild.children
+            sol: ((typeof stepchild.children != "undefined")? stepchild.children: [])
               .filter(
                 file => (file.extension == '.sol')
               )
@@ -58,7 +63,7 @@ router.get('/clone/:repo/:branch', function (req, res) {
       }));
 
     console.log(util.inspect(workshops));
-    res.send(workshops);
+    res.json(workshops);
   });
 
 })
