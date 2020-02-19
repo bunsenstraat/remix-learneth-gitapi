@@ -29,7 +29,7 @@ router.post('/getfile',function(req,response,next){
   
   //console.log(req.body.description.file);
 
-  https.get(req.body.description.file, (res) => {
+  https.get(req.body.file, (res) => {
     //console.log('statusCode:', res.statusCode);
     //console.log('headers:', res.headers);
     res.on('data', (d) => {
@@ -78,7 +78,11 @@ router.get('/clone/:repo/:branch?', function (req, res, next) {
         shell.exec(cmd, function (code, stdout, stderr) {
           console.log("just getting the tree",v);
           const workshops = getTree(v, '', rawpath);
-          res.json(workshops);
+          const getDateCmd = `git log -1 --format=%cd`;
+          //shell.exec(getDateCmd, function (code, stdout, stderr) {
+          //  workshops.date = stdout;
+            res.json(workshops);
+          //});
         });
       }else{
         console.log("cloning",`${path}/${id}`);
@@ -109,17 +113,24 @@ const getTree = (path,id, rawpath)=>{
 
   const tree = dirTree(path + "/" + id, {
     exclude: /.git/,
-    extensions: /\.(md|sol|js)$/
+    extensions: /\.(md|sol|js|yml)$/
   });
 
   const workshops =
   tree.children // children are the directories with workshops
+  .filter(file => (file.type == 'directory'))
   .map(element => ({
     name: element.name, // name of the workshop dir
     id: uniqid(),
     //type: element.type,
     description: ((typeof element.children != "undefined") ? element.children : [])
       .filter(file => (file.extension == '.md'))
+      .map(file => ({
+        file: `${rawpath}${element.name}/${file.name}`
+      })).values().next().value
+      ,
+    metadata: ((typeof element.children != "undefined") ? element.children : [])
+      .filter(file => (file.name == 'config.yml'))
       .map(file => ({
         file: `${rawpath}${element.name}/${file.name}`
       })).values().next().value
