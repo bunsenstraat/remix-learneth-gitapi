@@ -73,16 +73,17 @@ router.get('/clone/:repo/:branch?', function (req, res, next) {
       }
      
       if(v!=null && tree!=null){
-        shell.cd(path) 
+        shell.cd(v) 
+        console.log(v);
         const cmd = `git pull`
         shell.exec(cmd, function (code, stdout, stderr) {
-          console.log("just getting the tree",v);
+          console.log("just getting the tree",v,stdout,stderr);
           const workshops = getTree(v, '', rawpath);
           const getDateCmd = `git log -1 --format=%cd`;
-          //shell.exec(getDateCmd, function (code, stdout, stderr) {
-          //  workshops.date = stdout;
+          shell.exec(getDateCmd, function (code, stdout, stderr) {
+            workshops.date = stdout;
             res.json(workshops);
-          //});
+          });
         });
       }else{
         console.log("cloning",`${path}/${id}`);
@@ -98,7 +99,14 @@ router.get('/clone/:repo/:branch?', function (req, res, next) {
             res.status(404).send('Repo is empty or does not exist')
           } else {
             const workshops = getTree(path,id, rawpath);
-            res.json(workshops);
+            const getDateCmd = `git log -1 --format=%cd`;
+            shell.cd(`${path}/${id}`);
+            shell.exec(getDateCmd, function (code, stdout, stderr) {
+              console.log(stderr,stdout,path);
+              workshops.date = stdout;
+              res.json(workshops);
+            });
+            
           }
         });
       }
