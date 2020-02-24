@@ -15,23 +15,13 @@ const client = redis.createClient();
 
 router.use(bodyParser.json());
 router.use(bodyParser.urlencoded({extended: true}) );
-
 router.use(pretty({
   query: 'pretty'
 }));
-
 router.use(cors())
-
-
 router.post('/getfile',function(req,response,next){
   let data;
-
-  
-  //console.log(req.body.description.file);
-
   https.get(req.body.file, (res) => {
-    //console.log('statusCode:', res.statusCode);
-    //console.log('headers:', res.headers);
     res.on('data', (d) => {
       data = d
       console.log(d);
@@ -41,27 +31,26 @@ router.post('/getfile',function(req,response,next){
   }).on('error', (e) => {
     console.error(e);
   });
-
-  
 });
 
+router.get('/test/',function(req,res,next){
+  res.write("testing");
+  res.send();
+  return;
+  res.write("testing2");
+});
 
 router.get('/clone/:repo/:branch?', function (req, res, next) {
-  
   const path = '/tmp'
-  if(typeof req.params=="undefined"){
-    req.params.branch = `master`;
-  }
-
+  req.params.branch = (typeof req.params==`undefined`)?`master`:req.params.branch
   if (!shell.which('git')) {
     res.status(500).send('Git not available')
-
   } else {
     const id = uniqid();
     const url = `https://github.com/${req.params.repo}`;
     const rawpath = `https://raw.githubusercontent.com/${req.params.repo}/${req.params.branch}/`;
 
-    client.get(`${req.params.repo}/${req.params.branch}`,function(e,v){
+    client.get(`${req.params.repo}/${req.params.branch}`,function(e,v){ // get the data from redis
       console.log(e,v,path,id);
       let tree;
       if(v!=null){
@@ -81,13 +70,13 @@ router.get('/clone/:repo/:branch?', function (req, res, next) {
           const workshops = getTree(v, '', rawpath);
           const getDateCmd = `git log -1 --format=%cd`;
           shell.exec(getDateCmd, function (code, stdout, stderr) {
-            workshops.date = stdout;
+            workshops.datemodified = stdout;
             res.json(workshops);
           });
         });
       }else{
         console.log("cloning",`${path}/${id}`);
-        client.set(`${req.params.repo}/${req.params.branch}`,`${path}/${id}`);
+        
         shell.cd(path)    
         const cmd = `git clone --single-branch --branch ${req.params.branch} ${url} ${id}`;
         shell.exec(cmd, function (code, stdout, stderr) {   
@@ -99,11 +88,12 @@ router.get('/clone/:repo/:branch?', function (req, res, next) {
             res.status(404).send('Repo is empty or does not exist')
           } else {
             const workshops = getTree(path,id, rawpath);
-            const getDateCmd = `git log -1 --format=%cd`;
+            client.set(`${req.params.repo}/${req.params.branch}`,`${path}/${id}`); // store in redis
+            const getDateCmd = `git log -1 --format=%cd`; // command to get the date of the last commit
             shell.cd(`${path}/${id}`);
             shell.exec(getDateCmd, function (code, stdout, stderr) {
               console.log(stderr,stdout,path);
-              workshops.date = stdout;
+              workshops.datemodified = stdout;
               res.json(workshops);
             });
             
@@ -111,10 +101,7 @@ router.get('/clone/:repo/:branch?', function (req, res, next) {
         });
       }
     })
-
   }
-
-
 })
 
 const getTree = (path,id, rawpath)=>{
