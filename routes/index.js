@@ -93,7 +93,7 @@ router.get("/clone/:repo/:branch?", function(req, res, next) {
       });
     } else {
       
-      myrepo.id = uniqid(); // assig new id to this repo
+      myrepo.id = uniqid(); // assign new id to this repo
       myrepo.path = `${myrepo.tmpdir}/${myrepo.id}`
       console.log("cloning", myrepo.url);
       console.log(shell.pwd());
@@ -103,7 +103,7 @@ router.get("/clone/:repo/:branch?", function(req, res, next) {
       shell.exec(cmd, function(code, stdout, stderr) {
         const tree = dirTree(myrepo.path, {
           exclude: /.git/,
-          extensions: /\.(md|sol|js)$/
+          extensions: /\.(md|sol|js|vy)$/
         });
         if (tree == null) {
           res.status(404).send("Repo is empty or does not exist");
@@ -133,7 +133,7 @@ const sendTreeToOutput = (myrepo,res)=>{
 const getTree = (myrepo) => {
   const tree = dirTree(myrepo.path, {
     exclude: /.git/,
-    extensions: /\.(md|sol|js|yml)$/
+    extensions: /\.(md|sol|js|yml|vy)$/
   });
 
   const rawpath = myrepo.rawpath;
@@ -208,7 +208,19 @@ const getTree = (myrepo) => {
               file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
             }))
             .values()
+            .next().value,
+          vy: (typeof stepchild.children != "undefined"
+            ? stepchild.children
+            : []
+          )
+            .filter(file => file.extension == ".vy")
+            .filter(file => !file.name.includes("_test"))
+            .map(file => ({
+              file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
+            }))
+            .values()
             .next().value
+            
         }))
     }));
 
