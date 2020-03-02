@@ -10,20 +10,19 @@ const bodyParser = require("body-parser");
 const redis = require("redis");
 const client = redis.createClient();
 const os = require("os");
+const config = require("./config.json");
 
 class repo {
-  constructor(){
-    this.path = "" // where on disk the repo is cloned
-    this.id = "" // the unique id for the repo
-    this.rawpath = "" // the raw path of github files
-    this.branch = "master"
-    this.url = "" // the repo url
-    this.name = ""
-    this.tmpdir = ""
+  constructor() {
+    this.path = ""; // where on disk the repo is cloned
+    this.id = ""; // the unique id for the repo
+    this.rawpath = ""; // the raw path of github files
+    this.branch = "master";
+    this.url = ""; // the repo url
+    this.name = "";
+    this.tmpdir = "";
   }
-
 }
-
 
 router.use(bodyParser.json());
 router.use(bodyParser.urlencoded({ extended: true }));
@@ -32,24 +31,24 @@ router.use(
     query: "pretty"
   })
 );
-router.use(cors());
-router.post("/getfile", function(req, response, next) {
-  let data;
-  https
-    .get(req.body.file, res => {
-      res.on("data", d => {
-        data = d;
-        console.log(d);
-        response.write(d);
-        response.send();
-      });
-    })
-    .on("error", e => {
-      console.error(e);
-    });
-});
+var corsOptions = {
+  origin: function(origin, callback) {
+    if (config.whitelist.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log(`Not allowed by CORS ${origin}`);
+      callback(new Error(`Not allowed by CORS ${origin}`));
+    }
+  }
+};
 
-router.get("/clone/:repo/:branch?", function(req, res, next) {
+router.get("/clone/:repo/:branch?", cors(corsOptions), function(
+  req,
+  res,
+  next
+) {
+  var origin = req.get("origin");
+  console.log(origin);
 
   let myrepo = new repo();
   myrepo.tmpdir = os.tmpdir();
@@ -60,18 +59,14 @@ router.get("/clone/:repo/:branch?", function(req, res, next) {
     return;
   }
 
-  
   myrepo.url = `https://github.com/${req.params.repo}`;
   myrepo.rawpath = `https://raw.githubusercontent.com/${req.params.repo}/${req.params.branch}/`;
   myrepo.name = req.params.repo;
 
   // get the data from redis, it retuns a path
-  client.get(`${myrepo.name}/${myrepo.branch}`, function(
-    e,
-    pathInRedis
-  ) {
+  client.get(`${myrepo.name}/${myrepo.branch}`, function(e, pathInRedis) {
     myrepo.path = pathInRedis;
-    console.log("path in redis ",myrepo.path)
+    console.log("path in redis ", myrepo.path);
     let tree;
     if (myrepo.path != null) {
       // if there is data in redis, we check if the cloned repo exists
@@ -89,12 +84,11 @@ router.get("/clone/:repo/:branch?", function(req, res, next) {
       const cmd = `git pull`; // get the updates
       shell.exec(cmd, function(code, stdout, stderr) {
         console.log("just getting the tree", myrepo.path, stdout, stderr);
-        sendTreeToOutput(myrepo,res);
+        sendTreeToOutput(myrepo, res);
       });
     } else {
-      
       myrepo.id = uniqid(); // assign new id to this repo
-      myrepo.path = `${myrepo.tmpdir}/${myrepo.id}`
+      myrepo.path = `${myrepo.tmpdir}/${myrepo.id}`;
       console.log("cloning", myrepo.url);
       console.log(shell.pwd());
       const cmd = `git clone --single-branch --branch ${myrepo.branch} ${myrepo.url} ${myrepo.path}`;
@@ -110,14 +104,14 @@ router.get("/clone/:repo/:branch?", function(req, res, next) {
           return;
         }
         console.log("cloning is done");
-        sendTreeToOutput(myrepo,res);
+        sendTreeToOutput(myrepo, res);
         client.set(`${myrepo.name}/${myrepo.branch}`, `${myrepo.path}`); // store in redis
       });
     }
   });
 });
 
-const sendTreeToOutput = (myrepo,res)=>{
+const sendTreeToOutput = (myrepo, res) => {
   console.log("build tree", myrepo.path);
   const workshops = getTree(myrepo); // build the tree
   const getDateCmd = `git log -1 --format=%cd`; // command to get the date of the last commit
@@ -127,10 +121,10 @@ const sendTreeToOutput = (myrepo,res)=>{
     workshops.datemodified = stdout;
     res.json(workshops);
   });
-  shell.cd("/");// do this otherwise the shell gets stuck if dir gets deleted
-}
+  shell.cd("/"); // do this otherwise the shell gets stuck if dir gets deleted
+};
 
-const getTree = (myrepo) => {
+const getTree = myrepo => {
   const tree = dirTree(myrepo.path, {
     exclude: /.git/,
     extensions: /\.(md|sol|js|yml|vy)$/
@@ -220,7 +214,6 @@ const getTree = (myrepo) => {
             }))
             .values()
             .next().value
-            
         }))
     }));
 
