@@ -176,6 +176,18 @@ const getTree = myrepo => {
           )
             .filter(file => file.extension == ".sol")
             .filter(file => file.name.includes("_test"))
+            .filter(file => !file.name.includes("_answer"))
+            .map(file => ({
+              file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
+            }))
+            .values()
+            .next().value,
+          answer: (typeof stepchild.children != "undefined"
+            ? stepchild.children
+            : []
+          )
+            .filter(file => file.extension == ".sol")
+            .filter(file => file.name.includes("_answer"))
             .map(file => ({
               file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
             }))
@@ -187,6 +199,7 @@ const getTree = myrepo => {
           )
             .filter(file => file.extension == ".sol")
             .filter(file => !file.name.includes("_test"))
+            .filter(file => !file.name.includes("_answer"))
             .map(file => ({
               file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
             }))

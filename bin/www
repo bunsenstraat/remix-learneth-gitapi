@@ -7,27 +7,45 @@
 var app = require('../app');
 var debug = require('debug')('gitapi:server');
 var http = require('http');
+const https = require('https');
+const fs = require('fs');
+
+const privateKey = fs.readFileSync('/etc/letsencrypt/live/static.220.14.12.49.clients.your-server.de/privkey.pem', 'utf8');
+const certificate = fs.readFileSync('/etc/letsencrypt/live/static.220.14.12.49.clients.your-server.de/cert.pem', 'utf8');
+const ca = fs.readFileSync('/etc/letsencrypt/live/static.220.14.12.49.clients.your-server.de/fullchain.pem', 'utf8');
+
+
+
+const credentials = {
+	key: privateKey,
+  cert: certificate,
+  ca: ca
+};
+
+
+console.log(credentials);
 
 /**
  * Get port from environment and store in Express.
  */
 
-var port = normalizePort(process.env.PORT || '3000');
-app.set('port', port);
+// var port = normalizePort(process.env.PORT || '3000');
+// app.set('port', port);
 
 /**
  * Create HTTP server.
  */
 
-var server = http.createServer(app);
+//var server = http.createServer(app).listen(3001);
+var server = https.createServer(credentials, app).listen(3000);
 
 /**
  * Listen on provided port, on all network interfaces.
  */
 
-server.listen(port);
-server.on('error', onError);
-server.on('listening', onListening);
+// server.listen(port);
+// server.on('error', onError);
+// server.on('listening', onListening);
 
 /**
  * Normalize a port into a number, string, or false.
