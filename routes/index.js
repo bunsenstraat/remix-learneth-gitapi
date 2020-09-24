@@ -11,7 +11,9 @@ const redis = require("redis");
 const client = redis.createClient();
 const os = require("os");
 const config = require("./config.json");
-
+const fetch = require('node-fetch');
+const request = require('request');
+const YAML = require('yaml');
 class repo {
   constructor() {
     this.path = ""; // where on disk the repo is cloned
@@ -33,16 +35,17 @@ router.use(
 );
 var corsOptions = {
   origin: function(origin, callback) {
-    if (config.whitelist.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      console.log(`Not allowed by CORS ${origin}`);
-      callback(new Error(`Not allowed by CORS ${origin}`));
-    }
+    callback(null, true);
+    // if (config.whitelist.indexOf(origin) !== -1) {
+    //   callback(null, true);
+    // } else {
+    //   console.log(`Not allowed by CORS ${origin}`);
+    //   callback(new Error(`Not allowed by CORS ${origin}`));
+    // }
   }
 };
 
-router.get("/clone/:repo/:branch?", cors(corsOptions), function(
+router.get("/clone/:repo/:branch?", cors(corsOptions), async function(
   req,
   res,
   next
@@ -82,9 +85,10 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), function(
       console.log(myrepo.path);
       console.log(shell.pwd());
       const cmd = `git pull`; // get the updates
-      shell.exec(cmd, function(code, stdout, stderr) {
+      shell.exec(cmd, async function(code, stdout, stderr) {
         console.log("just getting the tree", myrepo.path, stdout, stderr);
-        sendTreeToOutput(myrepo, res);
+        await sendTreeToOutput(myrepo, res);
+        console.log("all done");
       });
     } else {
       myrepo.id = uniqid(); // assign new id to this repo
@@ -94,7 +98,7 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), function(
       const cmd = `git clone --single-branch --branch ${myrepo.branch} ${myrepo.url} ${myrepo.path}`;
       console.log(cmd, myrepo.path);
 
-      shell.exec(cmd, function(code, stdout, stderr) {
+      shell.exec(cmd, async function(code, stdout, stderr) {
         const tree = dirTree(myrepo.path, {
           exclude: /.git/,
           extensions: /\.(md|sol|js|vy)$/
@@ -104,16 +108,18 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), function(
           return;
         }
         console.log("cloning is done");
-        sendTreeToOutput(myrepo, res);
+        await sendTreeToOutput(myrepo, res);
         client.set(`${myrepo.name}/${myrepo.branch}`, `${myrepo.path}`); // store in redis
+        console.log("redis updated");
       });
     }
   });
 });
 
-const sendTreeToOutput = (myrepo, res) => {
+const sendTreeToOutput = async (myrepo, res) => {
   console.log("build tree", myrepo.path);
   const workshops = getTree(myrepo); // build the tree
+  await parseFiles(workshops);
   const getDateCmd = `git log -1 --format=%cd`; // command to get the date of the last commit
   shell.cd(`${myrepo.path}`);
   shell.exec(getDateCmd, function(code, stdout, stderr) {
@@ -121,8 +127,57 @@ const sendTreeToOutput = (myrepo, res) => {
     workshops.datemodified = stdout;
     res.json(workshops);
   });
-  shell.cd("/"); // do this otherwise the shell gets stuck if dir gets deleted
+  shell.cd("/");
+  console.log("output done"); // do this otherwise the shell gets stuck if dir gets deleted
 };
+
+const parseFiles = async (workshops) =>{
+  
+  for (let index = 0; index < workshops.ids.length; index++){
+    let element = workshops.ids[index];
+    let ob = workshops.entities[element];
+    if(typeof ob.description != "undefined"){
+      console.log(ob.description);
+      let html = await downloadPage(ob.description.file);
+      console.log(ob.description.file);
+      workshops.entities[element].description.content = html;
+    }
+    if(typeof ob.metadata != "undefined"){
+      console.log(ob.metadata);
+      let html = await downloadPage(ob.metadata.file);
+      console.log(ob.metadata.file);
+      let metadata = YAML.parse(html);
+      workshops.entities[element].metadata.content = metadata;
+      if(typeof metadata.name != "undefined") workshops.entities[element].name = metadata.name;
+    }
+    
+/*     if(typeof ob.steps != "undefined"){
+      for (let index2 = 0; index2 < ob.steps.length; index2++){
+        let filetypes = ["markdown","solidity","test","js","answer","vy"];
+        for (let filetype of filetypes) {
+        if(typeof ob.steps[index2][filetype] != "undefined"){
+          let html = await downloadPage(ob.steps[index2][filetype].file);
+          console.log(ob.steps[index2][filetype].file);
+          workshops.entities[element].steps[index2][filetype].content = html;
+        }
+      }
+    }
+    } */
+  };
+  console.log("fetching done"); 
+}
+
+function downloadPage(url) {
+  return new Promise((resolve, reject) => {
+      request(url, (error, response, body) => {
+          if (error) reject(error);
+          if (response.statusCode != 200) {
+              reject('Invalid status code <' + response.statusCode + '>');
+          }
+          resolve(body);
+      });
+  });
+}
 
 const getTree = myrepo => {
   const tree = dirTree(myrepo.path, {
