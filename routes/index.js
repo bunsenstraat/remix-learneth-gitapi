@@ -119,7 +119,7 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), async function(
 const sendTreeToOutput = async (myrepo, res) => {
   console.log("build tree", myrepo.path);
   const workshops = getTree(myrepo); // build the tree
-  await parseFiles(workshops);
+  await parseFiles(workshops, myrepo);
   const getDateCmd = `git log -1 --format=%cd`; // command to get the date of the last commit
   shell.cd(`${myrepo.path}`);
   shell.exec(getDateCmd, function(code, stdout, stderr) {
@@ -131,7 +131,7 @@ const sendTreeToOutput = async (myrepo, res) => {
   console.log("output done"); // do this otherwise the shell gets stuck if dir gets deleted
 };
 
-const parseFiles = async (workshops) =>{
+const parseFiles = async (workshops, myrepo) =>{
   
   for (let index = 0; index < workshops.ids.length; index++){
     let element = workshops.ids[index];
@@ -147,7 +147,8 @@ const parseFiles = async (workshops) =>{
       let html = await downloadPage(ob.metadata.file);
       console.log(ob.metadata.file);
       let metadata = YAML.parse(html);
-      workshops.entities[element].metadata.content = metadata;
+      workshops.entities[element].repo = myrepo;
+      workshops.entities[element].metadata.data = metadata;
       if(typeof metadata.name != "undefined") workshops.entities[element].name = metadata.name;
     }
     
