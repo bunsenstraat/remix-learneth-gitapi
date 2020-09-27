@@ -35,13 +35,13 @@ router.use(
 );
 var corsOptions = {
   origin: function(origin, callback) {
-    callback(null, true);
-    // if (config.whitelist.indexOf(origin) !== -1) {
-    //   callback(null, true);
-    // } else {
-    //   console.log(`Not allowed by CORS ${origin}`);
-    //   callback(new Error(`Not allowed by CORS ${origin}`));
-    // }
+    //callback(null, true);
+    if (config.whitelist.indexOf(origin) !== -1) {
+       callback(null, true);
+     } else {
+       console.log(`Not allowed by CORS ${origin}`);
+       callback(new Error(`Not allowed by CORS ${origin}`));
+     }
   }
 };
 
