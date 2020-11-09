@@ -35,13 +35,13 @@ router.use(
 );
 var corsOptions = {
   origin: function(origin, callback) {
-    //callback(null, true);
-    if (config.whitelist.indexOf(origin) !== -1) {
+    callback(null, true);
+/*     if (config.whitelist.indexOf(origin) !== -1) {
        callback(null, true);
      } else {
        console.log(`Not allowed by CORS ${origin}`);
        callback(new Error(`Not allowed by CORS ${origin}`));
-     }
+     } */
   }
 };
 
@@ -120,6 +120,8 @@ const sendTreeToOutput = async (myrepo, res) => {
   console.log("build tree", myrepo.path);
   const workshops = getTree(myrepo); // build the tree
   await parseFiles(workshops, myrepo);
+  //workshops.sort(compareLevel);
+  console.log(workshops.entities);
   const getDateCmd = `git log -1 --format=%cd`; // command to get the date of the last commit
   shell.cd(`${myrepo.path}`);
   shell.exec(getDateCmd, function(code, stdout, stderr) {
@@ -150,6 +152,9 @@ const parseFiles = async (workshops, myrepo) =>{
       workshops.entities[element].repo = myrepo;
       workshops.entities[element].metadata.data = metadata;
       if(typeof metadata.name != "undefined") workshops.entities[element].name = metadata.name;
+      if(typeof metadata.level != "undefined") {workshops.entities[element].level = metadata.level} else {workshops.entities[element].level=999999};
+    }else{
+      workshops.entities[element].level=999999;
     }
     
 /*     if(typeof ob.steps != "undefined"){
@@ -166,6 +171,17 @@ const parseFiles = async (workshops, myrepo) =>{
     } */
   };
   console.log("fetching done"); 
+}
+
+
+function compareLevel( a, b ) {
+  if ( a.level < b.level ){
+    return -1;
+  }
+  if ( a.level > b.level ){
+    return 1;
+  }
+  return 0;
 }
 
 function downloadPage(url) {
