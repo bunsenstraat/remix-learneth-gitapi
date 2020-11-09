@@ -25,7 +25,6 @@ class repo {
     this.tmpdir = "";
   }
 }
-
 router.use(bodyParser.json());
 router.use(bodyParser.urlencoded({ extended: true }));
 router.use(
@@ -118,44 +117,90 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), async function(
 
 const sendTreeToOutput = async (myrepo, res) => {
   console.log("build tree", myrepo.path);
-  const workshops = getTree(myrepo); // build the tree
+  let workshops = getTree(myrepo); // build the tree
   await parseFiles(workshops, myrepo);
-  //workshops.sort(compareLevel);
-  console.log(workshops.entities);
+  await groupWorkShops(workshops);
+  
+
+  Object.keys(workshops.sorted).map(k => (console.log(workshops.sorted[k])));
+
+  let entities = Object.assign(
+    ...Object.keys(workshops.sorted).map(k => ({
+      [workshops.sorted[k].id]: workshops.sorted[k]
+    }))
+  );
+  let ids = Object.keys(entities).map(k => k);
+
+  console.log(entities);
+  //console.log(ids);
+
+  console.log(workshops.sorted)
   const getDateCmd = `git log -1 --format=%cd`; // command to get the date of the last commit
   shell.cd(`${myrepo.path}`);
   shell.exec(getDateCmd, function(code, stdout, stderr) {
     console.log(stderr, stdout, myrepo.path);
     workshops.datemodified = stdout;
-    res.json(workshops);
+    res.json({ids:ids, entities:entities});
   });
   shell.cd("/");
   console.log("output done"); // do this otherwise the shell gets stuck if dir gets deleted
 };
 
+const groupWorkShops = async (workshops) =>{
+
+  let groups = {};
+  workshops.sorted = [];
+  console.log(workshops);
+
+  
+  for (let index = 0; index < workshops.length; index++){
+    let ob = workshops[index];
+    if(!groups[ob.level]) groups[ob.level] = [];
+    groups[ob.level].push(ob);
+  }
+  // sort on alphabet within each level group
+  
+  for (let property in groups) {
+    groups[property].sort(compareName);
+  }
+  for (let property in groups) {
+    for(let index in groups[property]){
+      console.log(groups[property][index]);
+      workshops.sorted.push(groups[property][index]);
+    }
+  }
+  console.log(groups);
+
+  
+  //console.log(workshops);
+  console.log("sorting done");
+
+}
+
 const parseFiles = async (workshops, myrepo) =>{
   
-  for (let index = 0; index < workshops.ids.length; index++){
-    let element = workshops.ids[index];
-    let ob = workshops.entities[element];
+  console.log(workshops.length);
+  for (let index = 0; index < workshops.length; index++){
+    let ob = workshops[index];
+    //console.log(ob);
     if(typeof ob.description != "undefined"){
       console.log(ob.description);
       let html = await downloadPage(ob.description.file);
       console.log(ob.description.file);
-      workshops.entities[element].description.content = html;
+      workshops[index].description.content = html;
     }
     if(typeof ob.metadata != "undefined"){
-      console.log(ob.metadata);
       let html = await downloadPage(ob.metadata.file);
-      console.log(ob.metadata.file);
       let metadata = YAML.parse(html);
-      workshops.entities[element].repo = myrepo;
-      workshops.entities[element].metadata.data = metadata;
-      if(typeof metadata.name != "undefined") workshops.entities[element].name = metadata.name;
-      if(typeof metadata.level != "undefined") {workshops.entities[element].level = metadata.level} else {workshops.entities[element].level=999999};
+      workshops[index].repo = myrepo;
+      workshops[index].metadata.data = metadata;
+      if(typeof metadata.name != "undefined") workshops[index].name = metadata.name;
+      if(typeof metadata.level != "undefined") {workshops[index].level = metadata.level} else {workshops[index].level=999999};
     }else{
-      workshops.entities[element].level=999999;
+      workshops[index].level=999999;
     }
+  }
+
     
 /*     if(typeof ob.steps != "undefined"){
       for (let index2 = 0; index2 < ob.steps.length; index2++){
@@ -169,16 +214,16 @@ const parseFiles = async (workshops, myrepo) =>{
       }
     }
     } */
-  };
+ // };
   console.log("fetching done"); 
 }
 
-
-function compareLevel( a, b ) {
-  if ( a.level < b.level ){
+function compareName( a, b ) {
+  //console.log(a,b);
+  if ( a.name < b.name ){
     return -1;
   }
-  if ( a.level > b.level ){
+  if ( a.name > b.name ){
     return 1;
   }
   return 0;
@@ -302,14 +347,16 @@ const getTree = myrepo => {
         }))
     }));
 
-  let entities = Object.assign(
+  console.log(workshops);
+
+/*   let entities = Object.assign(
     ...Object.keys(workshops).map(k => ({
       [workshops[k].id]: workshops[k]
     }))
   );
-  let ids = Object.keys(entities).map(k => k);
+  let ids = Object.keys(entities).map(k => k); */
 
-  return { ids: ids, entities: entities };
+  return workshops;
 };
 
 module.exports = router;
