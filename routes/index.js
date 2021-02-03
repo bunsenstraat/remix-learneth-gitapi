@@ -140,7 +140,7 @@ const sendTreeToOutput = async (myrepo, res) => {
   shell.exec(getDateCmd, function(code, stdout, stderr) {
     console.log(stderr, stdout, myrepo.path);
     workshops.datemodified = stdout;
-    res.json({ids:ids, entities:entities});
+    res.json({ids:ids, entities:entities, datemodified:stdout });
   });
   shell.cd("/");
   console.log("output done"); // do this otherwise the shell gets stuck if dir gets deleted
