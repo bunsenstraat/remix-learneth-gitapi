@@ -50,7 +50,7 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), async function(
   next
 ) {
   var origin = req.get("origin");
-  console.log(origin);
+  console.log("ORIGIN", origin);
 
   let myrepo = new repo();
   myrepo.tmpdir = os.tmpdir();
@@ -94,7 +94,7 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), async function(
       myrepo.path = `${myrepo.tmpdir}/${myrepo.id}`;
       console.log("cloning", myrepo.url);
       console.log(shell.pwd());
-      const cmd = `git clone --single-branch --branch ${myrepo.branch} ${myrepo.url} ${myrepo.path}`;
+      const cmd = `git clone --depth 1 --single-branch --branch ${myrepo.branch} ${myrepo.url} ${myrepo.path}`;
       console.log(cmd, myrepo.path);
 
       shell.exec(cmd, async function(code, stdout, stderr) {
