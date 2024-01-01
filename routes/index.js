@@ -7,8 +7,8 @@ var pretty = require("express-prettify");
 const https = require("https");
 var cors = require("cors");
 const bodyParser = require("body-parser");
-const redis = require("redis");
-const client = redis.createClient();
+const {LocalStorage} = require("node-localstorage");
+const client = new LocalStorage('./scratch');
 const os = require("os");
 const config = require("./config.json");
 const fetch = require('node-fetch');
@@ -66,8 +66,7 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), async function(
   myrepo.name = req.params.repo;
 
   // get the data from redis, it retuns a path
-  client.get(`${myrepo.name}/${myrepo.branch}`, function(e, pathInRedis) {
-    myrepo.path = pathInRedis;
+    myrepo.path = client.getItem(`${myrepo.name}/${myrepo.branch}`);
     console.log("path in redis ", myrepo.path);
     let tree;
     if (myrepo.path != null) {
@@ -108,11 +107,10 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), async function(
         }
         console.log("cloning is done");
         await sendTreeToOutput(myrepo, res);
-        client.set(`${myrepo.name}/${myrepo.branch}`, `${myrepo.path}`); // store in redis
+        client.setItem(`${myrepo.name}/${myrepo.branch}`, `${myrepo.path}`); // store in redis
         console.log("redis updated");
       });
     }
-  });
 });
 
 const sendTreeToOutput = async (myrepo, res) => {
