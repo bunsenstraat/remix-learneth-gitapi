@@ -32,6 +32,32 @@ router.use(
     query: "pretty"
   })
 );
+
+// Add a simple test endpoint
+router.get("/", function(req, res) {
+  const timestamp = new Date().toISOString();
+  console.log(`🏠 [${timestamp}] Root endpoint accessed`);
+  res.json({
+    status: "GitAPI Server is running!",
+    timestamp: timestamp,
+    endpoints: {
+      clone: "/clone/:repo/:branch?",
+      health: "/health"
+    }
+  });
+});
+
+// Add a health check endpoint
+router.get("/health", function(req, res) {
+  const timestamp = new Date().toISOString();
+  console.log(`❤️ [${timestamp}] Health check accessed`);
+  res.json({
+    status: "healthy",
+    timestamp: timestamp,
+    redis: "connected",
+    git: shell.which("git") ? "available" : "not available"
+  });
+});
 var corsOptions = {
   origin: function(origin, callback) {
     callback(null, true);
@@ -49,33 +75,56 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), async function(
   res,
   next
 ) {
+  const timestamp = new Date().toISOString();
+  console.log(`\n🚀 [${timestamp}] CLONE REQUEST STARTED`);
+  console.log(`📋 Params:`, req.params);
+  console.log(`❓ Query:`, req.query);
+  
   var origin = req.get("origin");
-  console.log("ORIGIN", origin);
+  console.log("🌐 ORIGIN", origin);
 
   let myrepo = new repo();
   myrepo.tmpdir = os.tmpdir();
   myrepo.branch =
     typeof req.params == `undefined` ? `master` : req.params.branch;
+    
+  console.log(`📂 Using temp directory: ${myrepo.tmpdir}`);
+  console.log(`🌿 Branch: ${myrepo.branch}`);
+    
   if (!shell.which("git")) {
+    console.log(`❌ Git not available!`);
     res.status(500).send("Git not available");
     return;
   }
+  console.log(`✅ Git is available`);
 
   myrepo.url = `https://github.com/${req.params.repo}`;
   myrepo.rawpath = `https://raw.githubusercontent.com/${req.params.repo}/${req.params.branch}/`;
   myrepo.name = req.params.repo;
+  
+  console.log(`🔗 Repository URL: ${myrepo.url}`);
+  console.log(`📁 Repository name: ${myrepo.name}`);
+  console.log(`🗂️ Raw path: ${myrepo.rawpath}`);
 
   // get the data from redis, it retuns a path
+  console.log(`🔍 Checking Redis for: ${myrepo.name}/${myrepo.branch}`);
   client.get(`${myrepo.name}/${myrepo.branch}`, function(e, pathInRedis) {
+    if (e) {
+      console.log(`❌ Redis error:`, e);
+    }
     myrepo.path = pathInRedis;
-    console.log("path in redis ", myrepo.path);
+    console.log("📍 Path in redis:", myrepo.path);
     let tree;
     if (myrepo.path != null) {
+      console.log(`✅ Found cached path, checking if directory exists...`);
       // if there is data in redis, we check if the cloned repo exists
       tree = dirTree(myrepo.path, {
         exclude: /.git/,
         extensions: /\.(md|sol|js)$/
       });
+      console.log(`📊 Directory tree result:`, tree ? 'Found' : 'Not found');
+    } else {
+      console.log(`❌ No cached path found in Redis`);
     }
 
     // we have cloned data, get the tree
@@ -116,23 +165,38 @@ router.get("/clone/:repo/:branch?", cors(corsOptions), async function(
 });
 
 const sendTreeToOutput = async (myrepo, res) => {
-  console.log("build tree", myrepo.path);
+  console.log("🌳 Building tree for:", myrepo.path);
   let workshops = getTree(myrepo); // build the tree
+  console.log("📊 Initial workshops object:", workshops);
+  
   await parseFiles(workshops, myrepo);
+  console.log("📄 After parseFiles:", workshops);
+  
   await groupWorkShops(workshops);
+  console.log("📋 After groupWorkShops:", workshops);
   
 
-  Object.keys(workshops.sorted).map(k => (console.log(workshops.sorted[k])));
+  Object.keys(workshops.sorted).map(k => (console.log("🔍 Workshop item:", workshops.sorted[k])));
 
-  let entities = Object.assign(
-    ...Object.keys(workshops.sorted).map(k => ({
-      [workshops.sorted[k].id]: workshops.sorted[k]
-    }))
-  );
-  let ids = Object.keys(entities).map(k => k);
+  // Safety check for empty workshops.sorted
+  let entities = {};
+  let ids = [];
+  
+  if (workshops.sorted && Object.keys(workshops.sorted).length > 0) {
+    console.log("✅ Found workshops to process");
+    entities = Object.assign(
+      ...Object.keys(workshops.sorted).map(k => ({
+        [workshops.sorted[k].id]: workshops.sorted[k]
+      }))
+    );
+    ids = Object.keys(entities).map(k => k);
+  } else {
+    console.log("⚠️  No workshops found or workshops.sorted is empty");
+    console.log("📊 workshops.sorted:", workshops.sorted);
+  }
 
-  console.log(entities);
-  //console.log(ids);
+  console.log("🎯 Final entities:", entities);
+  console.log("🆔 Final ids:", ids);
 
   console.log(workshops.sorted)
   const getDateCmd = `git log -1 --format=%cd`; // command to get the date of the last commit
@@ -242,112 +306,129 @@ function downloadPage(url) {
 }
 
 const getTree = myrepo => {
+  console.log("🌳 Starting getTree for path:", myrepo.path);
+  
   const tree = dirTree(myrepo.path, {
     exclude: /.git/,
     extensions: /\.(md|sol|js|yml|vy)$/
   });
 
+  console.log("📁 Directory tree result:", tree);
+  
+  if (!tree || !tree.children) {
+    console.log("❌ No tree or children found");
+    return [];
+  }
+
+  console.log("📂 Found", tree.children.length, "items in root directory");
+  
   const rawpath = myrepo.rawpath;
 
   const workshops = tree.children // children are the directories with workshops
-    .filter(file => file.type == "directory")
-    .map(element => ({
-      name: element.name, // name of the workshop dir
-      id: uniqid(),
-      //type: element.type,
-      description: (typeof element.children != "undefined"
-        ? element.children
-        : []
-      )
-        .filter(file => file.extension == ".md")
-        .map(file => ({
-          file: `${rawpath}${element.name}/${file.name}`
-        }))
-        .values()
-        .next().value,
-      metadata: (typeof element.children != "undefined" ? element.children : [])
-        .filter(file => file.name == "config.yml")
-        .map(file => ({
-          file: `${rawpath}${element.name}/${file.name}`
-        }))
-        .values()
-        .next().value,
-      steps: (typeof element.children != "undefined" ? element.children : []) // steps subdirectories but only when not empty
-        .filter(file => file.type == "directory")
-        .map(stepchild => ({
-          name: stepchild.name, // name of step directory
-          //type: stepchild.type,
-          markdown: (typeof stepchild.children != "undefined"
-            ? stepchild.children
-            : []
-          ) // go through files in step directory
-            .filter(file => file.extension == ".md")
-            .map(file => ({
-              file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
-            }))
-            .values()
-            .next().value,
-          test: (typeof stepchild.children != "undefined"
-            ? stepchild.children
-            : []
-          )
-            .filter(file => file.extension == ".sol")
-            .filter(file => file.name.includes("_test"))
-            .filter(file => !file.name.includes("_answer"))
-            .map(file => ({
-              file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
-            }))
-            .values()
-            .next().value,
-          answer: (typeof stepchild.children != "undefined"
-            ? stepchild.children
-            : []
-          )
-            .filter(file => file.extension == ".sol")
-            .filter(file => file.name.includes("_answer"))
-            .map(file => ({
-              file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
-            }))
-            .values()
-            .next().value,
-          solidity: (typeof stepchild.children != "undefined"
-            ? stepchild.children
-            : []
-          )
-            .filter(file => file.extension == ".sol")
-            .filter(file => !file.name.includes("_test"))
-            .filter(file => !file.name.includes("_answer"))
-            .map(file => ({
-              file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
-            }))
-            .values()
-            .next().value,
-          js: (typeof stepchild.children != "undefined"
-            ? stepchild.children
-            : []
-          )
-            .filter(file => file.extension == ".js")
-            .filter(file => !file.name.includes("_test"))
-            .map(file => ({
-              file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
-            }))
-            .values()
-            .next().value,
-          vy: (typeof stepchild.children != "undefined"
-            ? stepchild.children
-            : []
-          )
-            .filter(file => file.extension == ".vy")
-            .filter(file => !file.name.includes("_test"))
-            .map(file => ({
-              file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
-            }))
-            .values()
-            .next().value
-        }))
-    }));
-
-  console.log(workshops);
+    .filter(file => {
+      const isDirectory = file.children && Array.isArray(file.children);
+      console.log("🔍 Checking item:", file.name, "is directory:", isDirectory, "has children:", file.children ? file.children.length : 0);
+      return isDirectory;
+    })
+    .map(element => {
+      console.log("📋 Processing workshop directory:", element.name);
+      return {
+        name: element.name, // name of the workshop dir
+        id: uniqid(),
+        //type: element.type,
+        description: (typeof element.children != "undefined"
+          ? element.children
+          : []
+        )
+          .filter(file => file.name && file.name.endsWith('.md'))
+          .map(file => ({
+            file: `${rawpath}${element.name}/${file.name}`
+          }))
+          .values()
+          .next().value,
+        metadata: (typeof element.children != "undefined" ? element.children : [])
+          .filter(file => file.name == "config.yml")
+          .map(file => ({
+            file: `${rawpath}${element.name}/${file.name}`
+          }))
+          .values()
+          .next().value,
+        steps: (typeof element.children != "undefined" ? element.children : []) // steps subdirectories but only when not empty
+          .filter(file => file.children && Array.isArray(file.children))
+          .map(stepchild => ({
+            name: stepchild.name, // name of step directory
+            //type: stepchild.type,
+            markdown: (typeof stepchild.children != "undefined"
+              ? stepchild.children
+              : []
+            ) // go through files in step directory
+              .filter(file => file.name && file.name.endsWith('.md'))
+              .map(file => ({
+                file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
+              }))
+              .values()
+              .next().value,
+            test: (typeof stepchild.children != "undefined"
+              ? stepchild.children
+              : []
+            )
+              .filter(file => file.name && file.name.endsWith('.sol'))
+              .filter(file => file.name.includes("_test"))
+              .filter(file => !file.name.includes("_answer"))
+              .map(file => ({
+                file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
+              }))
+              .values()
+              .next().value,
+            answer: (typeof stepchild.children != "undefined"
+              ? stepchild.children
+              : []
+            )
+              .filter(file => file.name && file.name.endsWith('.sol'))
+              .filter(file => file.name.includes("_answer"))
+              .map(file => ({
+                file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
+              }))
+              .values()
+              .next().value,
+            solidity: (typeof stepchild.children != "undefined"
+              ? stepchild.children
+              : []
+            )
+              .filter(file => file.name && file.name.endsWith('.sol'))
+              .filter(file => !file.name.includes("_test"))
+              .filter(file => !file.name.includes("_answer"))
+              .map(file => ({
+                file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
+              }))
+              .values()
+              .next().value,
+            js: (typeof stepchild.children != "undefined"
+              ? stepchild.children
+              : []
+            )
+              .filter(file => file.name && file.name.endsWith('.js'))
+              .filter(file => !file.name.includes("_test"))
+              .map(file => ({
+                file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
+              }))
+              .values()
+              .next().value,
+            vy: (typeof stepchild.children != "undefined"
+              ? stepchild.children
+              : []
+            )
+              .filter(file => file.name && file.name.endsWith('.vy'))
+              .filter(file => !file.name.includes("_test"))
+              .map(file => ({
+                file: `${rawpath}${element.name}/${stepchild.name}/${file.name}`
+              }))
+              .values()
+              .next().value
+          }))
+      };
+    });  console.log("📊 Final workshops array:", workshops);
+  console.log("📈 Total workshops found:", workshops.length);
 
 /*   let entities = Object.assign(
     ...Object.keys(workshops).map(k => ({
